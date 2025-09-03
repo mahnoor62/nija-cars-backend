@@ -36,7 +36,7 @@ router.post('/create-checkout-session', async (req, res) => {
             cancel_url: `${WEB_URL}/cancel`,
             metadata: {
                 title: product.title,
-                price_usd: String(product.price),
+                price_usd: product.price,
                 image: imageUrl,
             }
         });
