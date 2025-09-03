@@ -65,7 +65,8 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 // Use EXACT path you configured in Stripe (note your code uses /nija-cars/...)
 
 // const endpointSecret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim();
-const endpointSecret = "whsec_7e29351f346ad2cd837eee07263d589787ddca50a706cdbeae5a4a37215e1b52";
+const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+// const endpointSecret = "whsec_7e29351f346ad2cd837eee07263d589787ddca50a706cdbeae5a4a37215e1b52";
 app.post('/stripe/webhook', express.raw({ type: 'application/json' }), (req, res) => {
     const sig = req.headers['stripe-signature'];
     let event;
