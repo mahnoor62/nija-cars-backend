@@ -9,17 +9,21 @@ const stripe = require('stripe')(SECRET_KEY)
 
 router.post('/create-checkout-session', async (req, res) => {
     try {
-        const { product, userId, cardCustomizationId  } = req.body;
+        const {product} = req.body;
         console.log("product from frontend:", product);
+
+
+        let imageUrl = new URL(product.image, WEB_URL).toString();
+
 
         const session = await stripe.checkout.sessions.create({
             line_items: [
                 {
                     price_data: {
-                        currency: 'aud',
+                        currency: 'usd',
                         product_data: {
-                            carImage: product.carImage,
-                            title: product.title,
+                            images: [imageUrl],
+                            name: product.title,
 
                         },
                         unit_amount: Math.round(product.price * 100),
@@ -32,15 +36,15 @@ router.post('/create-checkout-session', async (req, res) => {
             cancel_url: `${WEB_URL}/cancel`,
             metadata: {
                 title: product.title,
-                price: product.price,
-                carImage: product.carImage
+                price_usd: String(product.price),
+                image: imageUrl,
             }
         });
 
-        res.json({ url: session.url });
+        res.json({url: session.url});
     } catch (err) {
         console.error("Error creating checkout session:", err);
-        res.status(500).json({ error: err.raw?.message || 'Stripe error' });
+        res.status(500).json({error: err.raw?.message || 'Stripe error'});
     }
 });
 
