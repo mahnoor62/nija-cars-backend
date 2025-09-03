@@ -3,7 +3,13 @@ const sequelize = require('./config');
 const Routes = require('./routes');
 const Stripe = require('stripe');
 const app = express();
+const User = require('./models/user');
 const cors = require('cors');
+// top of file
+const crypto = require('crypto');
+
+const gen6 = () => crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
+
 //import the cron job file here to work it properly
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -66,7 +72,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // const endpointSecret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim();
 const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
-app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req, res) => {
     const sig = req.headers['stripe-signature'];
     const endpointSecret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim();
 
@@ -81,23 +87,25 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
         const session = event.data.object; // type: Stripe.Checkout.Session
 
         // ✅ What you asked for:
-        const email = session.customer_details?.email || null;     // buyer email
-        const metadata = session.metadata || {};                   // your metadata from session create
+        const email = session.customer_details?.email;
+        const metadata = session.metadata;
+        const paymentIntent = event.data.object.payment_intent;
+        const redeemCode = gen6();
 
-        // (Optional) If you also want line items and full charge details:
-        const [lineItems, pi] = await Promise.all([
-            stripe.checkout.sessions.listLineItems(session.id, { limit: 100 }),
-            stripe.paymentIntents.retrieve(session.payment_intent, { expand: ['latest_charge'] }),
-        ]);
+        await User.create({
+            email,
+            paymentIntent,
+            redeemCode
+        });
 
-        const chargeEmail = pi.latest_charge?.billing_details?.email || null;
+        // const [lineItems, pi] = await Promise.all([
+        //     stripe.checkout.sessions.listLineItems(session.id, { limit: 100 }),
+        //     stripe.paymentIntents.retrieve(session.payment_intent, { expand: ['latest_charge'] }),
+        // ]);
 
-        console.log('SESSION META:', JSON.stringify(metadata));
-        console.log('BUYER EMAIL:', email, '(from session.customer_details.email)');
-        console.log('CHARGE EMAIL:', chargeEmail, '(from latest_charge.billing_details.email)');
-        console.log('LINE ITEMS:', JSON.stringify(lineItems.data, null, 2));
+        // const chargeEmail = pi.latest_charge?.billing_details?.email || null;
 
-        // TODO: fulfill order using metadata, email, lineItems, etc.
+
     }
 
     return res.sendStatus(200);
@@ -134,7 +142,7 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (re
 
 
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({extended: true}));
 
 // Serve uploaded images statically
 app.use(express.static(__dirname + '/public'));

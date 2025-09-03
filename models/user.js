@@ -9,7 +9,7 @@ const User = sequelize.define('User', {
         defaultValue: null,
         unique: true
     },
-    radeemCode: {
+    redeemCode: {
         type: DataTypes.STRING,
         allowNull: false,
         unique: true
