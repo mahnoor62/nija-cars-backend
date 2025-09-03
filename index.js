@@ -8,18 +8,14 @@ const cors = require('cors');
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-
-
-const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
-
 // 🔹 Webhook must come BEFORE json middleware
 app.post('/stripe/payment/webhook', express.raw({ type: '*/*' }), (req, res) => {
     const sig = req.headers['stripe-signature'];
-    const secret = process.env.STRIPE_WEBHOOK_SECRET; // must start with whsec_
+    const secret = process.env.STRIPE_WEBHOOK_SECRET;
 
     try {
         const event = stripe.webhooks.constructEvent(req.body, sig, secret);
-        console.log('✅ Verified:', event.type, event.id);
+        console.log('✅ Verified:', event.type, event);
 
         if (event.type === 'checkout.session.completed') {
             const session = event.data.object;
