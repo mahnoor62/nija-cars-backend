@@ -75,7 +75,7 @@ app.post('/stripe/webhook', express.raw({ type: 'application/json' }), (req, res
     console.log("body", req.body)
     try {
         event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
-        console.log('✅ Verified:', event.type, event.id);
+        console.log('✅ Verified:', event);
     } catch (err) {
         console.error('❌ Verify failed:', err.message);
         return res.status(400).send(`Webhook Error: ${err.message}`);
