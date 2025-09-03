@@ -33,18 +33,22 @@ app.post('/nija-cars/stripe/payment/webhook', express.raw({type: 'application/js
     switch (event.type) {
         case 'checkout.session.async_payment_failed':
             const checkoutSessionAsyncPaymentFailed = event.data.object;
+            console.log("checkoutSessionAsyncPaymentFailed", checkoutSessionAsyncPaymentFailed)
             // Then define and call a function to handle the event checkout.session.async_payment_failed
             break;
         case 'checkout.session.async_payment_succeeded':
             const checkoutSessionAsyncPaymentSucceeded = event.data.object;
+            console.log("checkoutSessionAsyncPaymentSucceeded", checkoutSessionAsyncPaymentSucceeded)
             // Then define and call a function to handle the event checkout.session.async_payment_succeeded
             break;
         case 'payment_intent.payment_failed':
             const paymentIntentPaymentFailed = event.data.object;
+            console.log("paymentIntentPaymentFailed", paymentIntentPaymentFailed)
             // Then define and call a function to handle the event payment_intent.payment_failed
             break;
         case 'payment_intent.succeeded':
             const paymentIntentSucceeded = event.data.object;
+            console.log("paymentIntentSucceeded", paymentIntentSucceeded)
             // Then define and call a function to handle the event payment_intent.succeeded
             break;
         // ... handle other event types
