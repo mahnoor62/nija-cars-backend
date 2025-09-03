@@ -6,7 +6,7 @@ const app = express();
 const cors = require('cors');
 //import the cron job file here to work it properly
 
-// const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // // 🔹 Webhook must come BEFORE json middleware
 // const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -60,54 +60,40 @@ const cors = require('cors');
 //     response.send();
 // });
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' });
+// const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // Use EXACT path you configured in Stripe (note your code uses /nija-cars/...)
-const WEBHOOK_PATH = '/nija-cars/stripe/payment/webhook';
 
-// 1) Webhook BEFORE any body parser; keep raw bytes
-app.post(WEBHOOK_PATH, express.raw({ type: 'application/json' }), (req, res) => {
+// const endpointSecret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim();
+const endpointSecret = "whsec_7e29351f346ad2cd837eee07263d589787ddca50a706cdbeae5a4a37215e1b52";
+app.post('/stripe/webhook', express.raw({ type: 'application/json' }), (req, res) => {
     const sig = req.headers['stripe-signature'];
-    const endpointSecret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim();
-
-    console.log('sig:', sig);
-    console.log('endpointSecret:', endpointSecret ? `${endpointSecret.slice(0, 10)}…` : '(missing)');
-    console.log('raw buffer len:', Buffer.isBuffer(req.body) ? req.body.length : 'not-buffer');
-
     let event;
+    console.log("endpointSecret", endpointSecret)
+    console.log("sig", sig)
+    console.log("body", req.body)
     try {
         event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
-        // If we got here, signature is valid
         console.log('✅ Verified:', event.type, event.id);
     } catch (err) {
-        console.error('❌ Webhook verify failed:', err.message, {
-            ct: req.headers['content-type'],
-            clen: req.headers['content-length'],
-        });
+        console.error('❌ Verify failed:', err.message);
         return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
-    // Handle only the events you need
+    // Handle only events you need
     switch (event.type) {
-        case 'checkout.session.completed': {
-            const session = event.data.object;
-            console.log('checkout.session.completed:', session.id);
+        case 'checkout.session.completed':
+            console.log('checkout.session.completed:', event.data.object.id);
             break;
-        }
-        case 'payment_intent.succeeded': {
-            const pi = event.data.object;
-            console.log('payment_intent.succeeded:', pi.id);
+        case 'payment_intent.succeeded':
+            console.log('payment_intent.succeeded:', event.data.object.id);
             break;
-        }
         default:
-            // Optional: log unknowns during dev
-            console.log(`Unhandled event type: ${event.type}`);
+            console.log(`Unhandled event type ${event.type}`);
     }
 
-    // Always respond quickly
-    return res.sendStatus(200);
+    res.sendStatus(200);
 });
-
 // app.post('/stripe/payment/webhook', express.raw({ type: '*/*' }), (req, res) => {
 //     const sig = req.headers['stripe-signature'];
 //     const secret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim(); // trim = important
