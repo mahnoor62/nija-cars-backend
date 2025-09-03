@@ -6,58 +6,106 @@ const app = express();
 const cors = require('cors');
 //import the cron job file here to work it properly
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+// const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-// 🔹 Webhook must come BEFORE json middleware
-const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+// // 🔹 Webhook must come BEFORE json middleware
+// const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+//
+// app.post('/nija-cars/stripe/payment/webhook', express.raw({type: 'application/json'}), (request, response) => {
+//     const sig = request.headers['stripe-signature'];
+//
+//     console.log("sig", sig)
+//     console.log("endpointSecret", endpointSecret)
+//     console.log("request.body", request.body)
+//
+//     let event;
+//
+//     try {
+//         event = stripe.webhooks.constructEvent(request.body, sig, endpointSecret);
+//
+//         console.log("event", event)
+//     } catch (err) {
+//         response.status(400).send(`Webhook Error: ${err.message}`);
+//         return;
+//     }
+//
+//     // Handle the event
+//     switch (event.type) {
+//         case 'checkout.session.async_payment_failed':
+//             const checkoutSessionAsyncPaymentFailed = event.data.object;
+//             console.log("checkoutSessionAsyncPaymentFailed", checkoutSessionAsyncPaymentFailed)
+//             // Then define and call a function to handle the event checkout.session.async_payment_failed
+//             break;
+//         case 'checkout.session.async_payment_succeeded':
+//             const checkoutSessionAsyncPaymentSucceeded = event.data.object;
+//             console.log("checkoutSessionAsyncPaymentSucceeded", checkoutSessionAsyncPaymentSucceeded)
+//             // Then define and call a function to handle the event checkout.session.async_payment_succeeded
+//             break;
+//         case 'payment_intent.payment_failed':
+//             const paymentIntentPaymentFailed = event.data.object;
+//             console.log("paymentIntentPaymentFailed", paymentIntentPaymentFailed)
+//             // Then define and call a function to handle the event payment_intent.payment_failed
+//             break;
+//         case 'payment_intent.succeeded':
+//             const paymentIntentSucceeded = event.data.object;
+//             console.log("paymentIntentSucceeded", paymentIntentSucceeded)
+//             // Then define and call a function to handle the event payment_intent.succeeded
+//             break;
+//         // ... handle other event types
+//         default:
+//             console.log(`Unhandled event type ${event.type}`);
+//     }
+//
+//     // Return a 200 response to acknowledge receipt of the event
+//     response.send();
+// });
 
-app.post('/nija-cars/stripe/payment/webhook', express.raw({type: 'application/json'}), (request, response) => {
-    const sig = request.headers['stripe-signature'];
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2024-06-20' });
 
-    console.log("sig", sig)
-    console.log("endpointSecret", endpointSecret)
-    console.log("request.body", request.body)
+// Use EXACT path you configured in Stripe (note your code uses /nija-cars/...)
+const WEBHOOK_PATH = '/nija-cars/stripe/payment/webhook';
+
+// 1) Webhook BEFORE any body parser; keep raw bytes
+app.post(WEBHOOK_PATH, express.raw({ type: 'application/json' }), (req, res) => {
+    const sig = req.headers['stripe-signature'];
+    const endpointSecret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim();
+
+    console.log('sig:', sig);
+    console.log('endpointSecret:', endpointSecret ? `${endpointSecret.slice(0, 10)}…` : '(missing)');
+    console.log('raw buffer len:', Buffer.isBuffer(req.body) ? req.body.length : 'not-buffer');
 
     let event;
-
     try {
-        event = stripe.webhooks.constructEvent(request.body, sig, endpointSecret);
-
-        console.log("event", event)
+        event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+        // If we got here, signature is valid
+        console.log('✅ Verified:', event.type, event.id);
     } catch (err) {
-        response.status(400).send(`Webhook Error: ${err.message}`);
-        return;
+        console.error('❌ Webhook verify failed:', err.message, {
+            ct: req.headers['content-type'],
+            clen: req.headers['content-length'],
+        });
+        return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
-    // Handle the event
+    // Handle only the events you need
     switch (event.type) {
-        case 'checkout.session.async_payment_failed':
-            const checkoutSessionAsyncPaymentFailed = event.data.object;
-            console.log("checkoutSessionAsyncPaymentFailed", checkoutSessionAsyncPaymentFailed)
-            // Then define and call a function to handle the event checkout.session.async_payment_failed
+        case 'checkout.session.completed': {
+            const session = event.data.object;
+            console.log('checkout.session.completed:', session.id);
             break;
-        case 'checkout.session.async_payment_succeeded':
-            const checkoutSessionAsyncPaymentSucceeded = event.data.object;
-            console.log("checkoutSessionAsyncPaymentSucceeded", checkoutSessionAsyncPaymentSucceeded)
-            // Then define and call a function to handle the event checkout.session.async_payment_succeeded
+        }
+        case 'payment_intent.succeeded': {
+            const pi = event.data.object;
+            console.log('payment_intent.succeeded:', pi.id);
             break;
-        case 'payment_intent.payment_failed':
-            const paymentIntentPaymentFailed = event.data.object;
-            console.log("paymentIntentPaymentFailed", paymentIntentPaymentFailed)
-            // Then define and call a function to handle the event payment_intent.payment_failed
-            break;
-        case 'payment_intent.succeeded':
-            const paymentIntentSucceeded = event.data.object;
-            console.log("paymentIntentSucceeded", paymentIntentSucceeded)
-            // Then define and call a function to handle the event payment_intent.succeeded
-            break;
-        // ... handle other event types
+        }
         default:
-            console.log(`Unhandled event type ${event.type}`);
+            // Optional: log unknowns during dev
+            console.log(`Unhandled event type: ${event.type}`);
     }
 
-    // Return a 200 response to acknowledge receipt of the event
-    response.send();
+    // Always respond quickly
+    return res.sendStatus(200);
 });
 
 // app.post('/stripe/payment/webhook', express.raw({ type: '*/*' }), (req, res) => {
