@@ -92,12 +92,13 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
         const paymentIntent = event.data.object.payment_intent;
         const redeemCode = gen6();
 
-        await User.create({
+       const user =  await User.create({
             email,
             paymentIntent,
             redeemCode
         });
 
+        console.log("session is completed", user)
         // const [lineItems, pi] = await Promise.all([
         //     stripe.checkout.sessions.listLineItems(session.id, { limit: 100 }),
         //     stripe.paymentIntents.retrieve(session.payment_intent, { expand: ['latest_charge'] }),
