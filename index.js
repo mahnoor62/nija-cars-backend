@@ -66,60 +66,71 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // const endpointSecret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim();
 const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
-// const endpointSecret = "whsec_7e29351f346ad2cd837eee07263d589787ddca50a706cdbeae5a4a37215e1b52";
-app.post('/stripe/webhook', express.raw({ type: 'application/json' }), (req, res) => {
+app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
     const sig = req.headers['stripe-signature'];
+    const endpointSecret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim();
+
     let event;
-    console.log("endpointSecret", endpointSecret)
-    console.log("sig", sig)
-    console.log("body", req.body)
     try {
         event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
-        console.log('✅ Verified:', event);
     } catch (err) {
-        console.error('❌ Verify failed:', err.message);
         return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
-    // Handle only events you need
-    switch (event.type) {
-        case 'checkout.session.completed':
-            console.log('checkout.session.completed:', event.data.object.id);
-            break;
-        case 'payment_intent.succeeded':
-            console.log('payment_intent.succeeded:', event.data.object.id);
-            break;
-        default:
-            console.log(`Unhandled event type ${event.type}`);
+    if (event.type === 'checkout.session.completed') {
+        const session = event.data.object; // type: Stripe.Checkout.Session
+
+        // ✅ What you asked for:
+        const email = session.customer_details?.email || null;     // buyer email
+        const metadata = session.metadata || {};                   // your metadata from session create
+
+        // (Optional) If you also want line items and full charge details:
+        const [lineItems, pi] = await Promise.all([
+            stripe.checkout.sessions.listLineItems(session.id, { limit: 100 }),
+            stripe.paymentIntents.retrieve(session.payment_intent, { expand: ['latest_charge'] }),
+        ]);
+
+        const chargeEmail = pi.latest_charge?.billing_details?.email || null;
+
+        console.log('SESSION META:', JSON.stringify(metadata));
+        console.log('BUYER EMAIL:', email, '(from session.customer_details.email)');
+        console.log('CHARGE EMAIL:', chargeEmail, '(from latest_charge.billing_details.email)');
+        console.log('LINE ITEMS:', JSON.stringify(lineItems.data, null, 2));
+
+        // TODO: fulfill order using metadata, email, lineItems, etc.
     }
 
-    res.sendStatus(200);
+    return res.sendStatus(200);
 });
-// app.post('/stripe/payment/webhook', express.raw({ type: '*/*' }), (req, res) => {
-//     const sig = req.headers['stripe-signature'];
-//     const secret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim(); // trim = important
-//
-//     try {
-//         const event = stripe.webhooks.constructEvent(req.body, sig, secret);
-//         console.log('✅ Verified:', event.type, event.id);
-//
-//         if (event.type === 'checkout.session.completed') {
-//             const session = event.data.object;
-//             console.log('checkout.session.completed:', session.id);
-//         } else if (event.type === 'payment_intent.succeeded') {
-//             console.log('payment_intent.succeeded:', event.data.object.id);
-//         }
-//         return res.sendStatus(200);
-//     } catch (err) {
-//         console.error('❌ Verify failed:', err.message, {
-//             ct: req.headers['content-type'],
-//             clen: req.headers['content-length'],
-//             bufLen: Buffer.isBuffer(req.body) ? req.body.length : 'not-buffer',
-//         });
-//         return res.status(400).send('Bad signature');
-//     }
-// });
 
+// app.post('/stripe/webhook', express.raw({ type: 'application/json' }), (req, res) => {
+//     const sig = req.headers['stripe-signature'];
+//     let event;
+//     console.log("endpointSecret", endpointSecret)
+//     console.log("sig", sig)
+//     console.log("body", req.body)
+//     try {
+//         event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+//         console.log('✅ Verified:', event);
+//     } catch (err) {
+//         console.error('❌ Verify failed:', err.message);
+//         return res.status(400).send(`Webhook Error: ${err.message}`);
+//     }
+//
+//     // Handle only events you need
+//     switch (event.type) {
+//         case 'checkout.session.completed':
+//             console.log('checkout.session.completed:', event.data.object.id);
+//             break;
+//         case 'payment_intent.succeeded':
+//             console.log('payment_intent.succeeded:', event.data.object.id);
+//             break;
+//         default:
+//             console.log(`Unhandled event type ${event.type}`);
+//     }
+//
+//     res.sendStatus(200);
+// });
 
 
 app.use(express.json());
