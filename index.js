@@ -11,20 +11,18 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 // 🔹 Webhook must come BEFORE json middleware
 app.post('/stripe/payment/webhook', express.raw({ type: '*/*' }), (req, res) => {
     const sig = req.headers['stripe-signature'];
-    const secret = process.env.STRIPE_WEBHOOK_SECRET;
+    const secret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim(); // trim = important
 
     try {
         const event = stripe.webhooks.constructEvent(req.body, sig, secret);
-        console.log('✅ Verified:', event.type, event);
+        console.log('✅ Verified:', event.type, event.id);
 
         if (event.type === 'checkout.session.completed') {
             const session = event.data.object;
             console.log('checkout.session.completed:', session.id);
-        }
-        if (event.type === 'payment_intent.succeeded') {
+        } else if (event.type === 'payment_intent.succeeded') {
             console.log('payment_intent.succeeded:', event.data.object.id);
         }
-
         return res.sendStatus(200);
     } catch (err) {
         console.error('❌ Verify failed:', err.message, {
