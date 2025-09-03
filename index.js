@@ -4,6 +4,7 @@ const Routes = require('./routes');
 const Stripe = require('stripe');
 const app = express();
 const User = require('./models/user');
+const Purchase = require('./models/transaction');
 const cors = require('cors');
 // top of file
 const crypto = require('crypto');
@@ -72,7 +73,46 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // const endpointSecret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim();
 const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
-app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req, res) => {
+// app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req, res) => {
+//     const sig = req.headers['stripe-signature'];
+//     const endpointSecret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim();
+//
+//     let event;
+//     try {
+//         event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+//     } catch (err) {
+//         return res.status(400).send(`Webhook Error: ${err.message}`);
+//     }
+//
+//     if (event.type === 'checkout.session.completed') {
+//         const session = event.data.object; // type: Stripe.Checkout.Session
+//
+//         // ✅ What you asked for:
+//         const email = session.customer_details?.email;
+//         const metadata = session.metadata;
+//         const paymentIntent = event.data.object.payment_intent;
+//         const redeemCode = gen6();
+//
+//        const user =  await User.create({
+//             email,
+//             paymentIntent,
+//             redeemCode
+//         });
+//
+//         console.log("session is completed", user)
+//         // const [lineItems, pi] = await Promise.all([
+//         //     stripe.checkout.sessions.listLineItems(session.id, { limit: 100 }),
+//         //     stripe.paymentIntents.retrieve(session.payment_intent, { expand: ['latest_charge'] }),
+//         // ]);
+//
+//         // const chargeEmail = pi.latest_charge?.billing_details?.email || null;
+//
+//
+//     }
+//
+//     return res.sendStatus(200);
+// });
+app.post('/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
     const sig = req.headers['stripe-signature'];
     const endpointSecret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim();
 
@@ -84,62 +124,46 @@ app.post('/stripe/webhook', express.raw({type: 'application/json'}), async (req,
     }
 
     if (event.type === 'checkout.session.completed') {
-        const session = event.data.object; // type: Stripe.Checkout.Session
+        const session = event.data.object;
+        const email = session.customer_details?.email || null;
+        const paymentIntent = session.payment_intent; // string
+        const sessionId = session.id;
+        const metadata = session.metadata || {};
 
-        // ✅ What you asked for:
-        const email = session.customer_details?.email;
-        const metadata = session.metadata;
-        const paymentIntent = event.data.object.payment_intent;
-        const redeemCode = gen6();
+        await sequelize.transaction(async (t) => {
+            // 1) Reuse or create the user (no duplicate email errors)
+            const [user] = await User.findOrCreate({
+                where: { email },
+                defaults: { email },
+                transaction: t,
+            });
 
-       const user =  await User.create({
-            email,
-            paymentIntent,
-            redeemCode
+            // 2) Idempotency by paymentIntent
+            const existing = await Purchase.findOne({ where: { paymentIntent }, transaction: t });
+            if (existing) return; // already processed
+
+            // 3) Generate a unique 6-digit code (retry on rare collision)
+            let redeemCode;
+            for (let i = 0; i < 5; i++) {
+                const code = gen6();
+                try {
+                    await Purchase.create(
+                        { userId: user.id, paymentIntent, sessionId, redeemCode: code, metadata },
+                        { transaction: t }
+                    );
+                    redeemCode = code;
+                    break;
+                } catch (e) {
+                    // handle unique conflict on redeemCode -> loop once more
+                    if (e?.original?.code !== 'ER_DUP_ENTRY') throw e;
+                }
+            }
+            if (!redeemCode) throw new Error('Failed to generate unique redeem code');
         });
-
-        console.log("session is completed", user)
-        // const [lineItems, pi] = await Promise.all([
-        //     stripe.checkout.sessions.listLineItems(session.id, { limit: 100 }),
-        //     stripe.paymentIntents.retrieve(session.payment_intent, { expand: ['latest_charge'] }),
-        // ]);
-
-        // const chargeEmail = pi.latest_charge?.billing_details?.email || null;
-
-
     }
 
     return res.sendStatus(200);
 });
-
-// app.post('/stripe/webhook', express.raw({ type: 'application/json' }), (req, res) => {
-//     const sig = req.headers['stripe-signature'];
-//     let event;
-//     console.log("endpointSecret", endpointSecret)
-//     console.log("sig", sig)
-//     console.log("body", req.body)
-//     try {
-//         event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
-//         console.log('✅ Verified:', event);
-//     } catch (err) {
-//         console.error('❌ Verify failed:', err.message);
-//         return res.status(400).send(`Webhook Error: ${err.message}`);
-//     }
-//
-//     // Handle only events you need
-//     switch (event.type) {
-//         case 'checkout.session.completed':
-//             console.log('checkout.session.completed:', event.data.object.id);
-//             break;
-//         case 'payment_intent.succeeded':
-//             console.log('payment_intent.succeeded:', event.data.object.id);
-//             break;
-//         default:
-//             console.log(`Unhandled event type ${event.type}`);
-//     }
-//
-//     res.sendStatus(200);
-// });
 
 
 app.use(express.json());
