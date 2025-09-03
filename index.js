@@ -9,30 +9,77 @@ const cors = require('cors');
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // 🔹 Webhook must come BEFORE json middleware
-app.post('/stripe/payment/webhook', express.raw({ type: '*/*' }), (req, res) => {
-    const sig = req.headers['stripe-signature'];
-    const secret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim(); // trim = important
+const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+app.post('/nija-cars/stripe/payment/webhook', express.raw({type: 'application/json'}), (request, response) => {
+    const sig = request.headers['stripe-signature'];
+
+    console.log("sig", sig)
+    console.log("endpointSecret", endpointSecret)
+    console.log("request.body", request.body)
+
+    let event;
 
     try {
-        const event = stripe.webhooks.constructEvent(req.body, sig, secret);
-        console.log('✅ Verified:', event.type, event.id);
+        event = stripe.webhooks.constructEvent(request.body, sig, endpointSecret);
 
-        if (event.type === 'checkout.session.completed') {
-            const session = event.data.object;
-            console.log('checkout.session.completed:', session.id);
-        } else if (event.type === 'payment_intent.succeeded') {
-            console.log('payment_intent.succeeded:', event.data.object.id);
-        }
-        return res.sendStatus(200);
+        console.log("event", event)
     } catch (err) {
-        console.error('❌ Verify failed:', err.message, {
-            ct: req.headers['content-type'],
-            clen: req.headers['content-length'],
-            bufLen: Buffer.isBuffer(req.body) ? req.body.length : 'not-buffer',
-        });
-        return res.status(400).send('Bad signature');
+        response.status(400).send(`Webhook Error: ${err.message}`);
+        return;
     }
+
+    // Handle the event
+    switch (event.type) {
+        case 'checkout.session.async_payment_failed':
+            const checkoutSessionAsyncPaymentFailed = event.data.object;
+            // Then define and call a function to handle the event checkout.session.async_payment_failed
+            break;
+        case 'checkout.session.async_payment_succeeded':
+            const checkoutSessionAsyncPaymentSucceeded = event.data.object;
+            // Then define and call a function to handle the event checkout.session.async_payment_succeeded
+            break;
+        case 'payment_intent.payment_failed':
+            const paymentIntentPaymentFailed = event.data.object;
+            // Then define and call a function to handle the event payment_intent.payment_failed
+            break;
+        case 'payment_intent.succeeded':
+            const paymentIntentSucceeded = event.data.object;
+            // Then define and call a function to handle the event payment_intent.succeeded
+            break;
+        // ... handle other event types
+        default:
+            console.log(`Unhandled event type ${event.type}`);
+    }
+
+    // Return a 200 response to acknowledge receipt of the event
+    response.send();
 });
+
+// app.post('/stripe/payment/webhook', express.raw({ type: '*/*' }), (req, res) => {
+//     const sig = req.headers['stripe-signature'];
+//     const secret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim(); // trim = important
+//
+//     try {
+//         const event = stripe.webhooks.constructEvent(req.body, sig, secret);
+//         console.log('✅ Verified:', event.type, event.id);
+//
+//         if (event.type === 'checkout.session.completed') {
+//             const session = event.data.object;
+//             console.log('checkout.session.completed:', session.id);
+//         } else if (event.type === 'payment_intent.succeeded') {
+//             console.log('payment_intent.succeeded:', event.data.object.id);
+//         }
+//         return res.sendStatus(200);
+//     } catch (err) {
+//         console.error('❌ Verify failed:', err.message, {
+//             ct: req.headers['content-type'],
+//             clen: req.headers['content-length'],
+//             bufLen: Buffer.isBuffer(req.body) ? req.body.length : 'not-buffer',
+//         });
+//         return res.status(400).send('Bad signature');
+//     }
+// });
 
 
 
